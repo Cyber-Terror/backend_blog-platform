@@ -33,7 +33,7 @@ export class UploadsController {
         filename: (_req, file, cb) => {
           if (!file.mimetype.match(/\/(jpg|jpeg|png|gif)$/)) {
             return cb(
-              new BadRequestException('Разрешены только изображения!'),
+              new BadRequestException('You can attach only images!'),
               'false',
             );
           }

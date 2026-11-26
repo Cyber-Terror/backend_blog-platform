@@ -36,16 +36,19 @@ export class CommentsService {
     });
   }
 
-  async findAll(postId: number) {
+  async findAll(postId: number, skip: number, take: number) {
     const post = await this.prisma.post.findUnique({ where: { id: postId } });
     if (!post) {
-      throw new NotFoundException('Пост не найден');
+      throw new NotFoundException('Post not found');
     }
 
     return await this.prisma.comment.findMany({
       where: {
         postId: postId,
       },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      skip,
+      take,
       include: {
         author: {
           select: {
@@ -59,10 +62,10 @@ export class CommentsService {
   async findOne(postId: number, id: number) {
     const post = await this.prisma.post.findUnique({ where: { id: postId } });
     if (!post) {
-      throw new NotFoundException('Пост не найден');
+      throw new NotFoundException('Post not found');
     }
 
-    return await this.prisma.comment.findUnique({
+    const comment = await this.prisma.comment.findUnique({
       where: {
         id: id,
       },
@@ -74,17 +77,23 @@ export class CommentsService {
         },
       },
     });
+
+    if (!comment || comment.postId !== postId) {
+      return null;
+    }
+
+    return comment;
   }
 
   async update(id: number, userId: number, updateCommentDto: UpdateCommentDto) {
     const comment = await this.prisma.comment.findUnique({ where: { id: id } });
 
     if (!comment) {
-      throw new NotFoundException('Комментарий не найден');
+      throw new NotFoundException('Can not find comment');
     }
 
     if (comment?.authorId !== userId) {
-      throw new ForbiddenException('Вы не автор этого комментария');
+      throw new ForbiddenException('You are not the author of this comment');
     }
     return await this.prisma.comment.update({
       where: { id },
@@ -102,12 +111,24 @@ export class CommentsService {
   async remove(id: number, userId: number) {
     const comment = await this.prisma.comment.findUnique({ where: { id: id } });
     if (!comment) {
-      throw new NotFoundException('Комментарий не найден');
+      throw new NotFoundException('Can not find comment');
     }
 
-    if (comment?.authorId !== userId) {
-      throw new ForbiddenException('Вы не автор этого комментария');
+    const post = await this.prisma.post.findUnique({
+      where: { id: comment.postId },
+    });
+    if (!post) {
+      throw new NotFoundException('Post not found');
     }
+
+    const isCommentAuthor = comment.authorId === userId;
+    const isPostAuthor = post.authorId === userId;
+    if (!isCommentAuthor && !isPostAuthor) {
+      throw new ForbiddenException(
+        'You are not the author of this comment or post',
+      );
+    }
+
     return await this.prisma.comment.delete({ where: { id } });
   }
 }

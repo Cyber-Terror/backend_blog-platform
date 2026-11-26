@@ -86,4 +86,6 @@ export class PostsController {
   async remove(@Param('id', ParsePositiveIntPipe) id: number, @Request() req) {
     return await this.postsService.remove(id, req.user.id);
   }
+
+  
 }

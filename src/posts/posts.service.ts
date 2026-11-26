@@ -12,7 +12,13 @@ export class PostsService {
   constructor(private prisma: PrismaService) {}
 
   async create(userId: number, dto: CreatePostDto) {
-    const tags = (dto.tags ?? []).map((name) => name.toLowerCase());
+    const tags = Array.from(
+      new Set(
+        (dto.tags ?? [])
+          .map((name) => name.trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    );
     return await this.prisma.post.create({
       data: {
         title: dto.title,
@@ -33,7 +39,7 @@ export class PostsService {
   }
 
   async findAll(authorId?: number, tag?: string) {
-    return await this.prisma.post.findMany({
+    const posts = await this.prisma.post.findMany({
       where: {
         ...(authorId ? { authorId } : {}),
         ...(tag ? { tags: { some: { name: tag } } } : {}),
@@ -45,16 +51,22 @@ export class PostsService {
           },
         },
         tags: true,
+        _count: {
+          select: {
+            comments: true,
+          },
+        },
       },
     });
+
+    return posts.map(({ _count, ...post }) => ({
+      ...post,
+      commentsCount: _count.comments,
+    }));
   }
 
   async findOne(id: number) {
-    const post = await this.prisma.post.findUnique({ where: { id } });
-    if (!post) {
-      throw new NotFoundException('Пост не найден');
-    }
-    return await this.prisma.post.findUnique({
+    const post = await this.prisma.post.findUnique({
       where: { id },
       include: {
         author: {
@@ -63,21 +75,36 @@ export class PostsService {
           },
         },
         tags: true,
+        _count: {
+          select: {
+            comments: true,
+          },
+        },
       },
     });
+    if (!post) {
+      throw new NotFoundException('Post not found');
+    }
+
+    const { _count, ...data } = post;
+    return { ...data, commentsCount: _count.comments };
   }
 
   async update(id: number, userId: number, dto: UpdatePostDto) {
     const post = await this.prisma.post.findUnique({ where: { id } });
     if (!post) {
-      throw new NotFoundException('Пост не найден');
+      throw new NotFoundException('Post not found');
     }
 
     if (post?.authorId !== userId) {
-      throw new ForbiddenException('Вы не автор этого поста');
+      throw new ForbiddenException('You are not the author of this post');
     }
     const { tags, ...data } = dto;
-    const normalizedTags = tags?.map((name) => name.toLowerCase());
+    const normalizedTags = tags
+      ? Array.from(
+          new Set(tags.map((n) => n.trim().toLowerCase()).filter(Boolean)),
+        )
+      : undefined;
     return await this.prisma.post.update({
       where: { id },
       data: {
@@ -100,7 +127,7 @@ export class PostsService {
   async remove(id: number, userId: number) {
     const post = await this.prisma.post.findUnique({ where: { id } });
     if (post?.authorId !== userId) {
-      throw new ForbiddenException('Вы не автор этого поста');
+      throw new ForbiddenException('You are not the author of this post');
     }
     return await this.prisma.post.delete({ where: { id } });
   }
